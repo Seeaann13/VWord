@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 
-// 預留的廣告 ID 陣列 (測試用 ID，可替換為真實的 A-ADS IDs)
-const AD_IDS = ['2336341', '2336342', '2336343'];
+// 預留的廣告 ID 陣列 (替換為您的真實 A-ADS ID)
+const AD_IDS = ['2432299'];
 
 export default function AdBanner() {
   const [refreshCount, setRefreshCount] = useState(0);
@@ -45,13 +45,13 @@ export default function AdBanner() {
   }, []); // 空依賴陣列，確保只綁定一次事件
 
   return (
-    <footer className="flex-none h-[50px] border-t border-gray-200 bg-gray-50 pb-[env(safe-area-inset-bottom)] flex items-center justify-center relative overflow-hidden w-full">
-      <div className="flex items-center justify-center w-full h-[50px]">
+    <footer className="flex-none min-h-[60px] border-t border-gray-200 bg-gray-50 pb-[env(safe-area-inset-bottom)] flex items-center justify-center relative overflow-hidden w-full">
+      <div id="frame" style={{ width: '100%', margin: 'auto', position: 'relative', zIndex: 99998 }}>
         <iframe 
           key={`${currentAdId}-${refreshCount}`}
           data-aa={currentAdId} 
-          src={`//ad.a-ads.com/${currentAdId}?size=320x50`} 
-          style={{ width: '320px', height: '50px', border: 0, padding: 0, overflow: 'hidden', backgroundColor: 'transparent' }}
+          src={`//acceptable.a-ads.com/${currentAdId}/?size=Adaptive`}
+          style={{ border: 0, padding: 0, width: '70%', height: 'auto', overflow: 'hidden', display: 'block', margin: 'auto' }}
           title="Advertisement"
           loading="lazy"
           sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin"
