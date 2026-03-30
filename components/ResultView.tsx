@@ -1,112 +1,139 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { WordResult } from '@/services/recognition';
 import { addWord } from '@/lib/db';
 import { useRouter } from 'next/navigation';
+import { Plus, Check, X, ArrowRight } from 'lucide-react';
+
+import { useLanguage } from './providers/LanguageProvider';
 
 interface ResultViewProps {
   results: WordResult[];
   onReset: () => void;
   sourceImage: string;
+  sourceSnippet: string;
+  rect?: { x: number, y: number, width: number, height: number };
 }
 
-export default function ResultView({ results, onReset, sourceImage }: ResultViewProps) {
+export default function ResultView({ results, onReset, sourceImage, sourceSnippet, rect }: ResultViewProps) {
   const router = useRouter();
+  const { t } = useLanguage();
+  const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
 
-  // 顯示結果時觸發廣告刷新
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('refresh-ad'));
   }, []);
 
-  const handleAddToVocab = async (result: WordResult) => {
+  const handleAddToVocab = async (result: WordResult, idx: number) => {
+    if (addedIds.has(idx)) return;
+    
     await addWord({
       word: result.word,
       translation: result.translation,
       phonetic: result.phonetic,
       example: result.example,
       sourceImage: sourceImage,
+      sourceSnippet: sourceSnippet,
+      rect: rect,
       status: 'New'
     });
-    router.push('/words');
-  };
-
-  // 根據來源顯示不同的標籤顏色
-  const sourceColors = {
-    tesseract: 'bg-gray-100 text-gray-600 border border-gray-200',
-    groq: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
-    gemini: 'bg-blue-50 text-blue-600 border border-blue-200',
-    cache: 'bg-amber-50 text-amber-600 border border-amber-200',
-  };
-
-  const sourceLabels = {
-    tesseract: 'Local OCR',
-    groq: 'Llama 3',
-    gemini: 'Gemini Vision',
-    cache: 'Cache',
+    
+    setAddedIds(prev => new Set(prev).add(idx));
   };
 
   return (
-    <div className="min-h-full w-full z-40 bg-white flex flex-col">
-      <div className="flex-1 p-6 flex flex-col items-center">
+    <div className="fixed inset-0 z-50 bg-[var(--bg)] flex flex-col overflow-hidden">
+      {/* Header HUD */}
+      <div className="flex-none h-20 px-6 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg)]/40 backdrop-blur-xl">
+        <div className="flex flex-col">
+          <span className="text-[10px] font-mono text-emerald-500 tracking-[0.3em] uppercase">{t('scanner.detectionEngine')}</span>
+          <h2 className="text-[var(--text)] font-bold tracking-tight">{t('scanner.analysisResults')}</h2>
+        </div>
+        <button 
+          onClick={onReset}
+          className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
         {results.length === 0 ? (
-          <div className="w-full max-w-sm bg-white rounded-3xl p-8 shadow-xl border border-gray-100 text-center mt-10">
-            <h2 className="text-2xl font-bold text-black mb-2">找不到單字</h2>
-            <p className="text-gray-500">圖片中似乎沒有清晰的英文單字，請嘗試重新拍攝。</p>
+          <div className="h-full flex flex-col items-center justify-center text-center px-10">
+            <div className="w-20 h-20 rounded-3xl border border-[var(--border)] flex items-center justify-center text-gray-700 mb-6">
+              <X size={40} strokeWidth={1} />
+            </div>
+            <h3 className="text-xl font-bold text-[var(--text)] mb-2">{t('scanner.noTargetsFound')}</h3>
+            <p className="text-gray-500 text-sm leading-relaxed">
+              {t('scanner.noTargetsDesc')}
+            </p>
           </div>
         ) : (
-          <div className="w-full max-w-sm space-y-6 mt-4">
+          <AnimatePresence mode="popLayout">
             {results.map((result, idx) => (
-              <div key={idx} className="bg-white rounded-3xl p-8 shadow-xl border border-gray-100 relative">
-                {/* 來源標籤 */}
-                <div className="absolute top-4 right-4">
-                  <span className={`text-[10px] px-2 py-1 rounded-full uppercase tracking-wider font-medium ${sourceColors[result.source]}`}>
-                    {sourceLabels[result.source]}
-                  </span>
-                </div>
-
-                <h2 className="text-3xl font-bold text-black mb-2 tracking-tight break-words pr-16">
-                  {result.word || 'Unknown'}
-                </h2>
-                
-                <p className="text-gray-500 font-mono text-sm mb-6">
-                  {result.phonetic ? `/${result.phonetic}/` : ''}
-                </p>
-                
-                <div className="space-y-4">
+              <motion.div 
+                key={idx}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                className="v-card p-6 relative group overflow-hidden"
+              >
+                <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-1">Translation</h3>
-                    <p className="text-lg text-gray-900 font-medium leading-relaxed">
-                      {result.translation || '無翻譯'}
+                    <h3 className="text-2xl font-black text-[var(--text)] tracking-tight mb-1">
+                      {result.word}
+                    </h3>
+                    <p className="text-emerald-500/60 font-mono text-xs tracking-widest uppercase">
+                      {result.phonetic ? `[ ${result.phonetic} ]` : t('scanner.phoneticNA')}
                     </p>
                   </div>
                   
-                  <div>
-                    <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-1">Example</h3>
-                    <p className="text-sm text-gray-600 leading-relaxed italic border-l-2 border-gray-200 pl-3">
-                      &quot;{result.example || 'No example available.'}&quot;
-                    </p>
-                  </div>
+                  <button 
+                    onClick={() => handleAddToVocab(result, idx)}
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                      addedIds.has(idx) 
+                        ? 'bg-emerald-500 text-black' 
+                        : 'bg-[var(--bg)]/20 text-[var(--text)] border border-[var(--border)] hover:bg-[var(--bg)]/40'
+                    }`}
+                  >
+                    {addedIds.has(idx) ? <Check size={20} strokeWidth={3} /> : <Plus size={20} />}
+                  </button>
                 </div>
 
-                <button 
-                  onClick={() => handleAddToVocab(result)}
-                  className="mt-6 w-full py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition"
-                >
-                  加入生字本
-                </button>
-              </div>
+                <div className="space-y-4">
+                  <div className="p-4 bg-[var(--bg)]/40 rounded-2xl border border-[var(--border)]">
+                    <span className="text-[9px] font-mono text-gray-500 uppercase tracking-widest block mb-2">{t('scanner.translation')}</span>
+                    <p className="text-[var(--text)] font-medium">{result.translation}</p>
+                  </div>
+                  
+                  {result.example && (
+                    <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
+                      <span className="text-[9px] font-mono text-emerald-500/50 uppercase tracking-widest block mb-2">{t('scanner.context')}</span>
+                      <p className="text-gray-400 text-sm italic leading-relaxed">
+                        &quot;{result.example}&quot;
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Decorative Elements */}
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-3xl rounded-full -z-10" />
+              </motion.div>
             ))}
-          </div>
+          </AnimatePresence>
         )}
       </div>
 
-      <div className="sticky bottom-0 w-full bg-white/90 backdrop-blur pb-[env(safe-area-inset-bottom)] pt-4 px-6 z-10 flex justify-center mt-auto border-t border-gray-100">
+      {/* Footer Action */}
+      <div className="flex-none p-6 bg-[var(--bg)]/60 backdrop-blur-2xl border-t border-[var(--border)]">
         <button 
-          onClick={onReset}
-          className="w-full max-w-sm px-10 py-3.5 bg-black text-white font-medium rounded-full hover:bg-gray-800 transition-all active:scale-95 shadow-lg mb-6"
+          onClick={() => router.push('/words')}
+          className="w-full py-5 bg-[var(--text)] text-[var(--bg)] font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-emerald-500 transition-all active:scale-95 shadow-xl"
         >
-          繼續掃描
+          <span className="uppercase tracking-[0.2em] text-xs">{t('scanner.enterVault')}</span>
+          <ArrowRight size={18} />
         </button>
       </div>
     </div>

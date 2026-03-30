@@ -1,153 +1,184 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getAllWords, updateWordStatus, Word } from '@/lib/db';
-import Link from 'next/link';
-import { ArrowLeft, Check, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { getAllWords, Word, updateWordStatus } from '@/lib/db';
+import { useLanguage } from '@/components/providers/LanguageProvider';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Check, X, Eye, ChevronRight } from 'lucide-react';
 
 export default function ReviewPage() {
-  const [wordsToReview, setWordsToReview] = useState<Word[]>([]);
+  const [words, setWords] = useState<Word[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
+  const [isRevealed, setIsRevealed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isFinished, setIsFinished] = useState(false);
+  const { t } = useLanguage();
+  const router = useRouter();
 
   useEffect(() => {
     async function loadWords() {
-      try {
-        const words = await getAllWords();
-        // 篩選出需要複習的單字 (New 或 Learning)
-        const reviewList = words.filter(w => w.status !== 'Mastered');
-        // 隨機打亂順序
-        setWordsToReview(reviewList.sort(() => Math.random() - 0.5));
-      } catch (err) {
-        console.error('Failed to load words:', err);
-      } finally {
-        setIsLoading(false);
-      }
+      const allWords = await getAllWords();
+      // Filter words for review (New or Learning)
+      const reviewWords = allWords.filter(w => w.status !== 'Mastered');
+      // Shuffle words
+      setWords(reviewWords.sort(() => Math.random() - 0.5));
+      setIsLoading(false);
     }
     loadWords();
   }, []);
 
-  const handleNext = async (remembered: boolean) => {
-    const currentWord = wordsToReview[currentIndex];
-    
-    // 更新狀態邏輯
-    let newStatus: 'New' | 'Learning' | 'Mastered' = currentWord.status;
-    if (remembered) {
-      if (currentWord.status === 'New') newStatus = 'Learning';
-      else if (currentWord.status === 'Learning') newStatus = 'Mastered';
-    } else {
-      newStatus = 'Learning'; // 忘記了就退回或保持在 Learning
+  const handleStatusUpdate = async (status: Word['status']) => {
+    const word = words[currentIndex];
+    if (word.id) {
+      await updateWordStatus(word.id, status);
+      handleNext();
     }
+  };
 
-    if (newStatus !== currentWord.status && currentWord.id) {
-      await updateWordStatus(currentWord.id, newStatus);
-    }
-
-    if (currentIndex < wordsToReview.length - 1) {
+  const handleNext = () => {
+    setIsRevealed(false);
+    if (currentIndex < words.length - 1) {
       setCurrentIndex(prev => prev + 1);
-      setIsFlipped(false);
     } else {
-      setIsFinished(true);
+      setCurrentIndex(words.length); // Finished state
     }
   };
 
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (wordsToReview.length === 0 || isFinished) {
+  if (words.length === 0 || currentIndex >= words.length) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6">
-          <Check size={48} />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">太棒了！</h2>
-        <p className="text-gray-500 mb-8">您已經完成今天的單字複習。</p>
-        <Link 
-          href="/"
-          className="px-8 py-3 bg-gray-900 text-white rounded-full font-medium hover:bg-gray-800 transition-colors"
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-10">
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-24 h-24 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500 mb-8"
         >
-          回首頁
-        </Link>
+          <Check size={48} />
+        </motion.div>
+        <h2 className="text-2xl font-bold text-[var(--text)] mb-4">{t('review.congrats')}</h2>
+        <p className="text-[var(--text)]/50 mb-10">{t('review.allDone')}</p>
+        <button 
+          onClick={() => router.push('/')}
+          className="px-10 py-4 bg-[var(--text)] text-[var(--bg)] rounded-2xl font-bold uppercase tracking-widest text-xs"
+        >
+          {t('review.backHome')}
+        </button>
       </div>
     );
   }
 
-  const currentWord = wordsToReview[currentIndex];
+  const currentWord = words[currentIndex];
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-50">
-      <div className="flex items-center p-4">
-        <Link href="/" className="p-2 text-gray-500 hover:text-gray-900">
+    <div className="flex-1 flex flex-col p-6 space-y-8">
+      <header className="flex items-center justify-between">
+        <button onClick={() => router.push('/')} className="text-[var(--text)]/50 hover:text-[var(--text)]">
           <ArrowLeft size={24} />
-        </Link>
-        <div className="flex-1 text-center font-medium text-gray-500">
-          {currentIndex + 1} / {wordsToReview.length}
+        </button>
+        <div className="flex flex-col items-center">
+          <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest">{t('review.title')}</span>
+          <span className="text-xs font-bold text-[var(--text)]/40">{currentIndex + 1} / {words.length}</span>
         </div>
-        <div className="w-10"></div> {/* Spacer */}
-      </div>
+        <div className="w-6" />
+      </header>
 
-      <div className="flex-1 flex flex-col p-6 pb-24">
-        {/* Flashcard */}
-        <div 
-          className={`flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex flex-col items-center justify-center text-center transition-all duration-300 cursor-pointer ${isFlipped ? 'bg-emerald-50/30' : ''}`}
-          onClick={() => !isFlipped && setIsFlipped(true)}
-        >
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">{currentWord.word}</h2>
-          <p className="text-gray-500 font-mono mb-8">{currentWord.phonetic ? `/${currentWord.phonetic}/` : ''}</p>
+      <div className="flex-1 flex flex-col space-y-6">
+        {/* Scene Restoration Card */}
+        <div className="v-card flex-1 relative overflow-hidden flex flex-col">
+          <div className="flex-1 relative bg-black/20">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src={currentWord.sourceSnippet} 
+              alt="Scene Context" 
+              className="w-full h-full object-contain"
+            />
+            
+            {/* Blackout Box */}
+            {!isRevealed && currentWord.rect && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="absolute bg-black shadow-2xl border border-white/10"
+                style={{
+                  left: `${currentWord.rect.x * 100}%`,
+                  top: `${currentWord.rect.y * 100}%`,
+                  width: `${currentWord.rect.width * 100}%`,
+                  height: `${currentWord.rect.height * 100}%`,
+                }}
+              />
+            )}
+          </div>
 
-          {!isFlipped ? (
-            <div className="mt-auto text-emerald-600 font-medium animate-pulse">
-              點擊顯示答案
-            </div>
+          <AnimatePresence>
+            {isRevealed && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="p-8 bg-[var(--bg)]/80 backdrop-blur-xl border-t border-[var(--border)]"
+              >
+                <h3 className="text-4xl font-black text-[var(--text)] tracking-tighter mb-2">{currentWord.word}</h3>
+                <p className="text-emerald-500 font-mono text-sm mb-4 uppercase tracking-widest">{currentWord.phonetic}</p>
+                <div className="space-y-4">
+                  <div className="p-4 bg-[var(--bg)]/40 rounded-xl border border-[var(--border)]">
+                    <span className="text-[9px] font-mono text-gray-500 uppercase tracking-widest block mb-1">{t('scanner.translation')}</span>
+                    <p className="text-[var(--text)] font-medium">{currentWord.translation}</p>
+                  </div>
+                  <div className="p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/10">
+                    <span className="text-[9px] font-mono text-emerald-500/50 uppercase tracking-widest block mb-1">{t('scanner.context')}</span>
+                    <p className="text-gray-400 text-sm italic">&quot;{currentWord.example}&quot;</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col gap-4">
+          {!isRevealed ? (
+            <button 
+              onClick={() => setIsRevealed(true)}
+              className="w-full py-6 bg-[var(--text)] text-[var(--bg)] rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-3 shadow-xl hover:bg-emerald-500 hover:text-white transition-all"
+            >
+              <Eye size={18} />
+              {t('review.reveal')}
+            </button>
           ) : (
-            <div className="w-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="h-px w-full bg-gray-100"></div>
-              <div>
-                <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-2">Translation</h3>
-                <p className="text-xl text-gray-900 font-medium">{currentWord.translation}</p>
-              </div>
-              
-              {currentWord.example && (
-                <div>
-                  <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-2">Example</h3>
-                  <p className="text-gray-600 italic leading-relaxed">"{currentWord.example}"</p>
-                </div>
-              )}
-
-              {currentWord.sourceImage && (
-                <div className="pt-4">
-                  <h3 className="text-xs text-gray-400 uppercase tracking-widest mb-2">Scene Memory</h3>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={currentWord.sourceImage} alt="Source" className="w-full h-32 object-cover rounded-xl opacity-80" />
-                </div>
-              )}
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => handleStatusUpdate('Learning')}
+                className="py-5 bg-white/5 border border-white/10 text-[var(--text)] rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-white/10 transition-all"
+              >
+                <X size={16} className="text-red-500" />
+                {t('review.keepLearning')}
+              </button>
+              <button 
+                onClick={() => handleStatusUpdate('Mastered')}
+                className="py-5 bg-emerald-500 text-black rounded-2xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-emerald-400 transition-all"
+              >
+                <Check size={16} />
+                {t('review.mastered')}
+              </button>
             </div>
           )}
-        </div>
-
-        {/* Action Buttons */}
-        <div className={`flex gap-4 mt-8 transition-all duration-300 ${isFlipped ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-          <button 
-            onClick={() => handleNext(false)}
-            className="flex-1 py-4 bg-red-50 text-red-600 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
-          >
-            <X size={24} />
-            忘記了
-          </button>
-          <button 
-            onClick={() => handleNext(true)}
-            className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200"
-          >
-            <Check size={24} />
-            記住了
-          </button>
+          
+          {isRevealed && (
+            <button 
+              onClick={handleNext}
+              className="w-full py-4 text-[var(--text)]/40 hover:text-[var(--text)] text-[10px] font-mono uppercase tracking-[0.3em] flex items-center justify-center gap-2 transition-colors"
+            >
+              {t('review.next')}
+              <ChevronRight size={14} />
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 {
-  "name": "WordHack 單字掃描器",
-  "description": "極簡、免費、高效的單字掃描與辨識工具",
+  "name": "vlens",
+  "description": "Visual Memory & Scene Restoration Vocabulary Tool",
   "requestFramePermissions": [
     "camera"
   ]

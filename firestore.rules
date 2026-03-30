@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}/words/{wordId}
+    // Fields:
+    //   - word: string (required, 1-100 chars)
+    //   - translation: string (required, 1-200 chars)
+    //   - phonetic: string (optional)
+    //   - example: string (optional)
+    //   - sourceImage: string (required, base64)
+    //   - sourceSnippet: string (required, base64)
+    //   - status: string (required, enum: ['New', 'Learning', 'Mastered'])
+    //   - createdAt: timestamp (required)
+    //   - updatedAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "seeaann10@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidWord(data) {
+      return data.keys().hasAll(['word', 'translation', 'sourceSnippet', 'status', 'createdAt']) &&
+             data.word is string && data.word.size() > 0 && data.word.size() <= 100 &&
+             data.translation is string && data.translation.size() > 0 && data.translation.size() <= 200 &&
+             data.sourceSnippet is string && data.sourceSnippet.size() > 0 &&
+             data.status in ['New', 'Learning', 'Mastered'] &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+      
+      match /words/{wordId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidWord(request.resource.data);
+        allow update: if isOwner(userId) && isValidWord(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

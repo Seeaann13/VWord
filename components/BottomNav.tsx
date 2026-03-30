@@ -2,37 +2,45 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BookOpen, Camera, PlusCircle } from 'lucide-react';
+import { BookOpen, Camera, BookMarked } from 'lucide-react';
+import { useLanguage } from '@/components/providers/LanguageProvider';
 
 export default function BottomNav() {
   const pathname = usePathname();
-
-  const navItems = [
-    { name: '首頁', path: '/', icon: Home },
-    { name: '複習', path: '/review', icon: BookOpen },
-    { name: '掃描', path: '/scan', icon: Camera },
-    { name: '單字本', path: '/words', icon: BookOpen },
-  ];
+  const { t } = useLanguage();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 pb-[env(safe-area-inset-bottom)] z-50">
-      <div className="flex justify-around items-center h-16 max-w-3xl mx-auto px-2">
-        {navItems.map((item) => {
-          const isActive = pathname === item.path;
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.path}
-              href={item.path}
-              className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${
-                isActive ? 'text-emerald-600' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">{item.name}</span>
-            </Link>
-          );
-        })}
+    <nav className="v-glass rounded-3xl p-2 shadow-2xl">
+      <div className="flex justify-around items-center h-14 relative">
+        {/* 複習 */}
+        <Link
+          href="/review"
+          className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${
+            pathname === '/review' ? 'text-emerald-400 scale-110' : 'text-[var(--text)]/50 hover:text-[var(--text)]/80'
+          }`}
+        >
+          <BookOpen size={22} strokeWidth={pathname === '/review' ? 2.5 : 2} />
+          <span className="text-[9px] font-mono tracking-tighter mt-1 uppercase">{t('nav.review')}</span>
+        </Link>
+
+        {/* 鏡頭 (中央凸起) */}
+        <Link
+          href="/scan"
+          className="relative -top-6 flex items-center justify-center w-16 h-16 bg-emerald-500 text-black rounded-2xl shadow-[0_0_30px_rgba(16,185,129,0.4)] border-4 border-[var(--bg)] hover:scale-110 active:scale-95 transition-all duration-300"
+        >
+          <Camera size={28} strokeWidth={2.5} />
+        </Link>
+
+        {/* 字庫 */}
+        <Link
+          href="/words"
+          className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${
+            pathname === '/words' ? 'text-emerald-400 scale-110' : 'text-[var(--text)]/50 hover:text-[var(--text)]/80'
+          }`}
+        >
+          <BookMarked size={22} strokeWidth={pathname === '/words' ? 2.5 : 2} />
+          <span className="text-[9px] font-mono tracking-tighter mt-1 uppercase">{t('nav.vault')}</span>
+        </Link>
       </div>
     </nav>
   );

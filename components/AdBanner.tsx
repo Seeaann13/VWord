@@ -7,13 +7,12 @@ const AD_IDS = ['2432299'];
 
 export default function AdBanner() {
   const [refreshCount, setRefreshCount] = useState(0);
-  const [currentAdId, setCurrentAdId] = useState(AD_IDS[0]);
+  const [currentAdId, setCurrentAdId] = useState(() => AD_IDS[Math.floor(Math.random() * AD_IDS.length)]);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // 初始載入日誌與隨機 ID
+    // 初始載入日誌
     console.log('[AdBanner] 🚀 AdBanner mounted, initial load.');
-    setCurrentAdId(AD_IDS[Math.floor(Math.random() * AD_IDS.length)]);
 
     const handleRefresh = () => {
       // 防震機制 (Debounce)：清除之前的計時器

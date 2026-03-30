@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "Word": {
+      "title": "Word",
+      "description": "A vocabulary word with visual memory context",
+      "type": "object",
+      "properties": {
+        "word": { "type": "string", "description": "The target word" },
+        "translation": { "type": "string", "description": "Translation in user's language" },
+        "phonetic": { "type": "string", "description": "Phonetic representation" },
+        "example": { "type": "string", "description": "Usage example" },
+        "sourceImage": { "type": "string", "description": "Base64 encoded full scene image" },
+        "sourceSnippet": { "type": "string", "description": "Base64 encoded cropped memory snippet" },
+        "status": { "type": "string", "enum": ["New", "Learning", "Mastered"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["word", "translation", "sourceSnippet", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/words/{wordId}": {
+      "schema": "Word",
+      "description": "User's personal vocabulary collection"
+    }
+  }
+}

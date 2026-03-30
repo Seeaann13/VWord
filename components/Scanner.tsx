@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Camera } from 'lucide-react';
 import { processImage, WordResult, initTesseract } from '@/services/recognition';
 import ResultView from './ResultView';
 
@@ -24,6 +26,8 @@ export default function Scanner() {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [permissionError, setPermissionError] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [originalImage, setOriginalImage] = useState<string | null>(null);
+  const [capturedRect, setCapturedRect] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
   
   // 辨識狀態
   const [recognitionStatus, setRecognitionStatus] = useState<string>('');
@@ -37,6 +41,8 @@ export default function Scanner() {
   const animationFrameId = useRef<number>(0);
   const lastProcessTime = useRef<number>(0);
   const smoothedRectRef = useRef<Rect | null>(null);
+
+  const { t } = useLanguage();
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -256,7 +262,7 @@ export default function Scanner() {
     const displayCanvas = canvasRef.current;
     if (!video || !displayCanvas) return;
 
-    setRecognitionStatus('處理中...');
+    setRecognitionStatus(t('scanner.processing'));
     console.log('[Capture] 1. 開始擷取影像');
 
     setTimeout(async () => {
@@ -337,16 +343,29 @@ export default function Scanner() {
               return;
             }
 
-            console.log('[Capture] 5. 執行裁切 (Crop)');
-            srcMat = cv.imread(tempCanvas);
-            let rx = Math.round(minX);
-            let ry = Math.round(minY);
-            let rw = Math.round(rectWidth);
-            let rh = Math.round(rectHeight);
+            // Add 20% margin to the crop for context
+            const margin = 0.2;
+            let rx = Math.round(minX - rectWidth * margin);
+            let ry = Math.round(minY - rectHeight * margin);
+            let rw = Math.round(rectWidth * (1 + margin * 2));
+            let rh = Math.round(rectHeight * (1 + margin * 2));
+            
+            // Ensure bounds
+            rx = Math.max(0, rx);
+            ry = Math.max(0, ry);
             if (rx + rw > vw) rw = vw - rx;
             if (ry + rh > vh) rh = vh - ry;
+
             const rect = new cv.Rect(rx, ry, rw, rh);
             dstMat = srcMat.roi(rect);
+
+            // Calculate normalized rect relative to the snippet
+            const normalizedRect = {
+              x: (minX - rx) / rw,
+              y: (minY - ry) / rh,
+              width: (rectWidth) / rw,
+              height: (rectHeight) / rh
+            };
 
             console.log('[Capture] 6. 渲染至 croppedCanvas');
             const croppedCanvas = document.createElement('canvas');
@@ -358,7 +377,7 @@ export default function Scanner() {
             const finalImageUrl = croppedCanvas.toDataURL('image/jpeg', 0.8);
             
             console.log('[Capture] 7. OpenCV 處理完成');
-            resolve(finalImageUrl);
+            resolve(JSON.stringify({ url: finalImageUrl, rect: normalizedRect }));
           } catch (e) {
             reject(e);
           } finally {
@@ -373,13 +392,21 @@ export default function Scanner() {
         });
 
         try {
-          const finalImage = await Promise.race([processOpenCV, timeoutPromise]);
-          // 強制更新預覽
-          setCapturedImage(finalImage);
+          const result = await Promise.race([processOpenCV, timeoutPromise]);
+          try {
+            const { url, rect } = JSON.parse(result);
+            setCapturedImage(url);
+            setCapturedRect(rect);
+          } catch {
+            setCapturedImage(result);
+            setCapturedRect({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 });
+          }
+          setOriginalImage(originalDataUrl);
         } catch (cvError) {
           console.error('[Capture] OpenCV 處理失敗或超時:', cvError);
           console.log('[Capture] 影像處理失敗或超時，將使用原始圖片');
           setCapturedImage(originalDataUrl);
+          setOriginalImage(originalDataUrl);
         }
 
       } catch (err) {
@@ -407,7 +434,7 @@ export default function Scanner() {
       setResults(res);
     } catch (err) {
       console.error(err);
-      setRecognitionStatus('辨識失敗，請重試');
+      setRecognitionStatus(t('scanner.recognitionFailed'));
       setTimeout(() => setRecognitionStatus(''), 3000);
     }
   };
@@ -415,16 +442,17 @@ export default function Scanner() {
   const handleReset = () => {
     setResults(null);
     setCapturedImage(null);
+    setOriginalImage(null);
     setRecognitionStatus('');
   };
 
   // 如果有辨識結果，顯示 ResultView
   if (results && capturedImage) {
-    return <ResultView results={results} onReset={handleReset} sourceImage={capturedImage} />;
+    return <ResultView results={results} onReset={handleReset} sourceImage={originalImage || capturedImage} sourceSnippet={capturedImage} rect={capturedRect || undefined} />;
   }
 
   return (
-    <div className="relative w-full flex-1 bg-white flex flex-col items-center justify-center overflow-hidden">
+    <div className="relative w-full flex-1 bg-black flex flex-col items-center justify-center overflow-hidden">
       <Script 
         src="https://docs.opencv.org/4.8.0/opencv.js" 
         strategy="afterInteractive"
@@ -432,39 +460,41 @@ export default function Scanner() {
       />
 
       {!isCameraRequested && !capturedImage ? (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white p-6 text-center">
-          <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-2xl mb-8 flex items-center justify-center text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
-              <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
-              <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
-              <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
-            </svg>
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[#050505] p-8 text-center">
+          <div className="relative w-32 h-32 mb-10">
+            <div className="absolute inset-0 border-2 border-emerald-500/20 rounded-3xl animate-pulse" />
+            <div className="absolute inset-4 border border-emerald-500/40 rounded-2xl" />
+            <div className="absolute inset-0 flex items-center justify-center text-emerald-500">
+              <Camera size={40} strokeWidth={1.5} />
+            </div>
+            {/* Corner Accents */}
+            <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-emerald-500" />
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-emerald-500" />
           </div>
-          <h2 className="text-2xl font-semibold mb-3 tracking-tight text-black">準備掃描</h2>
-          <p className="text-gray-500 text-sm max-w-[260px] leading-relaxed">
-            點擊下方按鈕啟動相機進行單字辨識。
+          
+          <h2 className="text-3xl font-bold mb-4 tracking-tighter text-[var(--text)]">{t('scanner.visualEngine')}</h2>
+          <p className="text-gray-500 text-sm max-w-[280px] leading-relaxed font-mono uppercase tracking-widest">
+            {t('scanner.readyToCapture')}
           </p>
+
           {permissionError && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm max-w-[260px] text-left">
-              <p className="font-semibold mb-1">無法存取相機</p>
-              <p className="mb-2">請確認瀏覽器已允許相機權限。</p>
-              <p className="text-xs opacity-80">
-                提示：若您在預覽視窗中無法開啟相機，請嘗試點擊右上角按鈕「在新分頁中開啟」本應用程式。
-              </p>
+            <div className="mt-8 p-4 v-glass rounded-2xl text-red-400 text-xs max-w-[280px] border-red-500/20">
+              <p className="font-bold mb-1 uppercase tracking-widest">{t('scanner.accessDenied')}</p>
+              <p className="opacity-80">{t('scanner.enableCameraDesc')}</p>
             </div>
           )}
+
           <button 
             onClick={() => {
               setPermissionError(false);
               setIsCameraRequested(true);
             }}
-            className="mt-10 px-10 py-3.5 bg-black text-white font-medium rounded-full hover:bg-gray-800 transition-all active:scale-95 shadow-lg"
+            className="mt-12 px-12 py-4 bg-emerald-500 text-black font-black rounded-2xl hover:bg-emerald-400 transition-all active:scale-95 v-glow uppercase tracking-widest text-xs"
           >
-            啟動相機
+            {t('scanner.initializeLens')}
           </button>
           
-          <div className="mt-6">
+          <div className="mt-8">
             <input 
               type="file" 
               accept="image/*" 
@@ -486,9 +516,9 @@ export default function Scanner() {
             />
             <label 
               htmlFor="image-upload"
-              className="text-gray-500 text-sm hover:text-black cursor-pointer underline underline-offset-4 transition-colors"
+              className="text-gray-600 text-[10px] font-mono uppercase tracking-[0.3em] hover:text-emerald-500 cursor-pointer transition-colors"
             >
-              或從裝置上傳圖片
+              {t('scanner.importFromLocal')}
             </label>
           </div>
         </div>
@@ -498,11 +528,30 @@ export default function Scanner() {
             ref={videoRef} 
             playsInline 
             muted 
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover opacity-60"
           />
+          
+          {/* HUD Overlay */}
+          <div className="absolute inset-0 pointer-events-none z-10">
+            {/* Scanning Line */}
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.5)] animate-[scan_3s_linear_infinite]" />
+            
+            {/* Viewfinder Corners */}
+            <div className="absolute top-10 left-10 w-10 h-10 border-t-2 border-l-2 border-white/40" />
+            <div className="absolute top-10 right-10 w-10 h-10 border-t-2 border-r-2 border-white/40" />
+            <div className="absolute bottom-10 left-10 w-10 h-10 border-b-2 border-l-2 border-white/40" />
+            <div className="absolute bottom-10 right-10 w-10 h-10 border-b-2 border-r-2 border-white/40" />
+            
+            {/* Center Crosshair */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6">
+              <div className="absolute top-1/2 left-0 w-full h-[1px] bg-emerald-500/50" />
+              <div className="absolute left-1/2 top-0 w-[1px] h-full bg-emerald-500/50" />
+            </div>
+          </div>
+
           <canvas 
             ref={canvasRef} 
-            className="absolute inset-0 w-full h-full pointer-events-none z-10"
+            className="absolute inset-0 w-full h-full pointer-events-none z-10 opacity-80"
           />
           <canvas 
             ref={hiddenCanvasRef} 
@@ -510,54 +559,67 @@ export default function Scanner() {
           />
 
           {!isOpenCvLoaded && isCameraReady && (
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 bg-white/80 backdrop-blur-md text-black px-4 py-2 rounded-full text-xs flex items-center gap-2 shadow-sm">
-              <div className="w-3 h-3 border-2 border-gray-400 border-t-black rounded-full animate-spin"></div>
-              視覺引擎載入中...
+            <div className="absolute top-10 left-1/2 -translate-x-1/2 z-20 v-glass text-emerald-500 px-5 py-2 rounded-full text-[10px] font-mono tracking-widest uppercase flex items-center gap-3">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
+              {t('scanner.neuralEngineLoading')}
             </div>
           )}
 
-          <div className="absolute bottom-8 left-0 right-0 flex justify-center z-20">
+          <div className="absolute bottom-12 left-0 right-0 flex justify-center z-20">
             <button 
               onClick={handleCapture}
-              className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+              className="group relative flex items-center justify-center"
             >
-              <div className="w-16 h-16 bg-white/90 rounded-full"></div>
+              <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full scale-150 group-active:scale-100 transition-transform" />
+              <div className="w-20 h-20 rounded-full border-2 border-white/30 flex items-center justify-center transition-all group-hover:border-emerald-500">
+                <div className="w-16 h-16 bg-white rounded-full group-active:scale-90 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.3)]" />
+              </div>
             </button>
           </div>
         </>
       ) : (
-        <div className="absolute inset-0 z-30 bg-white flex flex-col">
-          <div className="flex-1 relative p-4 flex items-center justify-center bg-gray-50 min-h-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src={capturedImage} 
-              alt="Scanned Document" 
-              className="max-w-full max-h-full object-contain rounded-md shadow-lg"
-            />
+        <div className="absolute inset-0 z-30 bg-[#050505] flex flex-col">
+          <div className="flex-1 relative p-6 flex items-center justify-center bg-black/40 min-h-0">
+            <div className="relative group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src={capturedImage} 
+                alt="Scanned Document" 
+                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-white/10"
+              />
+              <div className="absolute inset-0 border border-emerald-500/20 rounded-2xl pointer-events-none" />
+            </div>
           </div>
           
           {/* 狀態提示區 */}
-          {recognitionStatus && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 bg-white/90 backdrop-blur-md text-black px-6 py-4 rounded-2xl flex flex-col items-center gap-3 shadow-xl border border-gray-100">
-              <div className="w-6 h-6 border-2 border-gray-300 border-t-black rounded-full animate-spin"></div>
-              <p className="text-sm font-medium tracking-widest">{recognitionStatus}</p>
-            </div>
-          )}
+          <AnimatePresence>
+            {recognitionStatus && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 v-glass text-white px-8 py-6 rounded-3xl flex flex-col items-center gap-4 shadow-2xl border-emerald-500/20"
+              >
+                <div className="w-8 h-8 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
+                <p className="text-[10px] font-mono tracking-[0.3em] uppercase text-emerald-500">{recognitionStatus}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <div className="flex-none h-24 flex items-center justify-between px-8 bg-white border-t border-gray-200">
+          <div className="flex-none h-32 flex items-center justify-between px-10 bg-[var(--bg)] border-t border-[var(--border)]">
             <button 
               onClick={() => setCapturedImage(null)}
               disabled={!!recognitionStatus}
-              className="text-gray-500 hover:text-black px-4 py-2 font-medium tracking-wide disabled:opacity-50"
+              className="text-gray-500 hover:text-[var(--text)] text-[10px] font-mono uppercase tracking-widest disabled:opacity-30 transition-colors"
             >
-              重拍
+              {t('scanner.discard')}
             </button>
             <button 
               onClick={handleRecognize}
               disabled={!!recognitionStatus}
-              className="bg-black text-white px-8 py-3 rounded-full font-medium hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 shadow-md"
+              className="bg-[var(--text)] text-[var(--bg)] px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all active:scale-95 disabled:opacity-30 shadow-xl"
             >
-              確認並辨識
+              {t('scanner.analyzeScene')}
             </button>
           </div>
         </div>
