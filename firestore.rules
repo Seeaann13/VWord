@@ -9,9 +9,9 @@ service cloud.firestore {
     // Fields:
     //   - word: string (required, 1-100 chars)
     //   - translation: string (required, 1-200 chars)
-    //   - phonetic: string (optional)
-    //   - example: string (optional)
-    //   - sourceImage: string (required, base64)
+    //   - phonetic: string (optional, 0-100 chars)
+    //   - example: string (optional, 0-500 chars)
+    //   - sourceImage: string (optional, base64)
     //   - sourceSnippet: string (required, base64)
     //   - status: string (required, enum: ['New', 'Learning', 'Mastered'])
     //   - createdAt: timestamp (required)
@@ -37,13 +37,26 @@ service cloud.firestore {
           (request.auth.token.email == "seeaann10@gmail.com" && request.auth.token.email_verified == true));
     }
 
+    function hasOnlyAllowedFields(data, allowedFields) {
+      return data.keys().hasOnly(allowedFields);
+    }
+
     function isValidWord(data) {
-      return data.keys().hasAll(['word', 'translation', 'sourceSnippet', 'status', 'createdAt']) &&
+      let requiredFields = ['word', 'translation', 'sourceSnippet', 'status', 'createdAt', 'updatedAt'];
+      let optionalFields = ['phonetic', 'example', 'sourceImage', 'rect'];
+      let allFields = requiredFields.concat(optionalFields);
+      
+      return data.keys().hasAll(requiredFields) &&
+             hasOnlyAllowedFields(data, allFields) &&
              data.word is string && data.word.size() > 0 && data.word.size() <= 100 &&
              data.translation is string && data.translation.size() > 0 && data.translation.size() <= 200 &&
-             data.sourceSnippet is string && data.sourceSnippet.size() > 0 &&
+             data.sourceSnippet is string && data.sourceSnippet.size() > 0 && data.sourceSnippet.size() < 1048576 &&
              data.status in ['New', 'Learning', 'Mastered'] &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp &&
+             (!('phonetic' in data) || (data.phonetic is string && data.phonetic.size() <= 100)) &&
+             (!('example' in data) || (data.example is string && data.example.size() <= 500)) &&
+             (!('sourceImage' in data) || (data.sourceImage is string && data.sourceImage.size() < 1048576));
     }
 
     // ===============================================================
@@ -51,13 +64,22 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin();
+      // User profile document
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && 
+                      hasOnlyAllowedFields(request.resource.data, ['uid', 'email', 'role', 'createdAt', 'updatedAt']) &&
+                      request.resource.data.role == 'user';
+      allow update: if (isOwner(userId) && 
+                        request.resource.data.role == resource.data.role &&
+                        hasOnlyAllowedFields(request.resource.data, ['uid', 'email', 'role', 'createdAt', 'updatedAt'])) || 
+                      isAdmin();
       
       match /words/{wordId} {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if isOwner(userId) && isValidWord(request.resource.data);
-        allow update: if isOwner(userId) && isValidWord(request.resource.data);
-        allow delete: if isOwner(userId);
+        allow update: if isOwner(userId) && isValidWord(request.resource.data) &&
+                        request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(userId) || isAdmin();
       }
     }
 
