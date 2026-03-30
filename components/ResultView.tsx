@@ -2,17 +2,34 @@
 
 import { useEffect } from 'react';
 import { WordResult } from '@/services/recognition';
+import { addWord } from '@/lib/db';
+import { useRouter } from 'next/navigation';
 
 interface ResultViewProps {
   results: WordResult[];
   onReset: () => void;
+  sourceImage: string;
 }
 
-export default function ResultView({ results, onReset }: ResultViewProps) {
+export default function ResultView({ results, onReset, sourceImage }: ResultViewProps) {
+  const router = useRouter();
+
   // 顯示結果時觸發廣告刷新
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('refresh-ad'));
   }, []);
+
+  const handleAddToVocab = async (result: WordResult) => {
+    await addWord({
+      word: result.word,
+      translation: result.translation,
+      phonetic: result.phonetic,
+      example: result.example,
+      sourceImage: sourceImage,
+      status: 'New'
+    });
+    router.push('/words');
+  };
 
   // 根據來源顯示不同的標籤顏色
   const sourceColors = {
@@ -71,6 +88,13 @@ export default function ResultView({ results, onReset }: ResultViewProps) {
                     </p>
                   </div>
                 </div>
+
+                <button 
+                  onClick={() => handleAddToVocab(result)}
+                  className="mt-6 w-full py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition"
+                >
+                  加入生字本
+                </button>
               </div>
             ))}
           </div>

@@ -419,8 +419,8 @@ export default function Scanner() {
   };
 
   // 如果有辨識結果，顯示 ResultView
-  if (results) {
-    return <ResultView results={results} onReset={handleReset} />;
+  if (results && capturedImage) {
+    return <ResultView results={results} onReset={handleReset} sourceImage={capturedImage} />;
   }
 
   return (
